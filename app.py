@@ -61,28 +61,42 @@ if page == "Upload Data":
 
     st.header("Upload Solar Data")
 
-    uploaded_file = st.file_uploader("Upload CSV", type="csv")
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
-    if uploaded_file:
+if uploaded_file is not None:
 
+    try:
+        # ------------------------------
+        # LOAD RAW
+        # ------------------------------
         raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
 
-        st.subheader("Raw Data")
-        st.dataframe(raw_df.head())
+        # ------------------------------
+        # VALIDATE INPUT  ⭐ NEW
+        # ------------------------------
+        from src.data.validator import validate_schema, validate_types
 
-        # ---- SAFE CLEAN ----
-        cleaned = clean_solar_data(raw_df)
+        validate_schema(raw_df)
+        validate_types(raw_df)
 
-        if isinstance(cleaned, tuple):
-            cleaned_df = cleaned[0]
-        else:
-            cleaned_df = cleaned
+        st.success("Data validation passed")
 
-        st.subheader("Cleaned Data")
-        st.dataframe(cleaned_df.head())
+    except Exception as e:
+        st.error("Invalid input data")
+        st.exception(e)
+        st.stop()
 
-        st.session_state["cleaned_df"] = cleaned_df
-        st.success("Data uploaded successfully. Go to Forecast Dashboard.")
+    # ------------------------------
+    # SHOW RAW
+    # ------------------------------
+    st.subheader("Raw Data Preview")
+    st.dataframe(raw_df.head())
+
+    # ------------------------------
+    # CLEAN
+    # ------------------------------
+    cleaned_df, report = clean_solar_data(raw_df)
+
 
 
 
