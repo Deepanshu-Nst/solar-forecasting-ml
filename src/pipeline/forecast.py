@@ -1,29 +1,21 @@
 import pandas as pd
-
-from src.data.loader import load_csv
-from src.data.cleaner import clean_solar_data
-from src.features.engineer import create_features
 from src.models.uncertainty import predict_with_uncertainty
 
 
-def run_forecast_pipeline(csv_path, trained_model):
+def run_forecast_pipeline(feature_df, trained_model):
     """
-    Full end-to-end forecasting pipeline.
+    Forecast pipeline using preprocessed feature dataframe.
+    Assumes cleaning + feature engineering already done.
     """
 
-    # ------------------------
-    # Load and preprocess
-    # ------------------------
-    df = load_csv(csv_path)
-    clean_df, _ = clean_solar_data(df)
-    feature_df = create_features(clean_df)
+    df = feature_df.copy()
 
     # ------------------------
     # Prepare prediction data
     # ------------------------
-    X = feature_df.drop(columns=["timestamp", "power"])
-    timestamps = feature_df["timestamp"]
-    actual = feature_df["power"]
+    X = df.drop(columns=["timestamp", "power"], errors="ignore")
+    timestamps = df["timestamp"]
+    actual = df["power"]
 
     # ------------------------
     # Predict with uncertainty
@@ -41,4 +33,4 @@ def run_forecast_pipeline(csv_path, trained_model):
         "upper_bound": upper
     })
 
-    return results
+    return results.reset_index(drop=True)

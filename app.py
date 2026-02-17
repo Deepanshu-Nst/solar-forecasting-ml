@@ -18,6 +18,8 @@ from sklearn.metrics import (
 
 from src.data.cleaner import clean_solar_data
 from src.features.engineer import create_features
+from src.pipeline.forecast import run_forecast_pipeline
+
 
 
 # ============================================================
@@ -63,39 +65,65 @@ if page == "Upload Data":
 
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
-if uploaded_file is not None:
+    if uploaded_file is not None:
 
-    try:
+        try:
+            # ------------------------------
+            # LOAD RAW
+            # ------------------------------
+            raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
+
+            # ------------------------------
+            # VALIDATE INPUT
+            # ------------------------------
+            from src.data.validator import run_all_validations
+
+            raw_df, missing_report = run_all_validations(raw_df)
+
+            st.success("Data validation passed")
+
+            st.subheader("Missing Values Report")
+            st.dataframe(missing_report)
+
+        except Exception as e:
+            st.error("Invalid input data")
+            st.exception(e)
+            st.stop()
+
         # ------------------------------
-        # LOAD RAW
+        # SHOW RAW
         # ------------------------------
-        raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
+        st.subheader("Raw Data Preview")
+        st.dataframe(raw_df.head())
 
         # ------------------------------
-        # VALIDATE INPUT  ⭐ NEW
+        # CLEAN
         # ------------------------------
-        from src.data.validator import validate_schema, validate_types
+        cleaned_df, report = clean_solar_data(raw_df)
 
-        validate_schema(raw_df)
-        validate_types(raw_df)
+        st.subheader("Cleaned Data Preview")
+        st.dataframe(cleaned_df.head())
 
-        st.success("Data validation passed")
+        # ------------------------------
+        # FEATURES
+        # ------------------------------
+        feature_df = create_features(cleaned_df)
 
-    except Exception as e:
-        st.error("Invalid input data")
-        st.exception(e)
-        st.stop()
+        # ------------------------------
+        # FORECAST
+        # ------------------------------
+        forecast_df = run_forecast_pipeline(feature_df, model)
 
-    # ------------------------------
-    # SHOW RAW
-    # ------------------------------
-    st.subheader("Raw Data Preview")
-    st.dataframe(raw_df.head())
+        # ------------------------------
+        # SAVE SESSION STATE
+        # ------------------------------
+        st.session_state["raw_df"] = raw_df
+        st.session_state["cleaned_df"] = cleaned_df
+        st.session_state["X"] = feature_df
+        st.session_state["forecast_df"] = forecast_df
 
-    # ------------------------------
-    # CLEAN
-    # ------------------------------
-    cleaned_df, report = clean_solar_data(raw_df)
+        st.success("Forecast generated successfully. Go to Dashboard.")
+
 
 
 
