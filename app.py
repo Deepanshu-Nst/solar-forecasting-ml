@@ -21,13 +21,61 @@ from src.features.engineer import create_features
 from src.pipeline.forecast import run_forecast_pipeline
 
 
+# ============================================================
+# UI STYLE — GLOBAL THEME
+# ============================================================
+
+st.markdown("""
+<style>
+.stApp { background-color:#0E1117; }
+.block-container { max-width:1200px; padding-top:2rem; }
+
+.card {
+    background:#161B22;
+    padding:22px;
+    border-radius:14px;
+    border:1px solid #30363D;
+    margin-bottom:22px;
+}
+
+.metric-card {
+    background:linear-gradient(145deg,#1f2630,#141a22);
+    padding:18px;
+    border-radius:12px;
+    text-align:center;
+    border:1px solid #2f3542;
+}
+
+section[data-testid="stSidebar"] {
+    background:#0B0F14;
+    border-right:1px solid #2f3542;
+}
+
+[data-testid="stDataFrame"] {
+    border-radius:12px;
+    overflow:hidden;
+}
+
+.stButton>button {
+    border-radius:8px;
+    font-weight:600;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ============================================================
 # CONFIG
 # ============================================================
 
 st.set_page_config(page_title="Solar Power Forecasting", layout="wide")
-st.title("☀️ Solar Power Forecasting System")
+
+st.markdown("""
+<h1 style='text-align:center;margin-bottom:0;'>☀️ Solar Power Forecasting System</h1>
+<p style='text-align:center;color:#8b949e;margin-top:4px;'>
+AI-powered solar generation prediction & monitoring dashboard
+</p>
+""", unsafe_allow_html=True)
 
 MODEL_PATH = Path("models/random_forest.pkl")
 
@@ -49,6 +97,12 @@ model = load_model()
 # SIDEBAR
 # ============================================================
 
+st.sidebar.markdown("""
+<h2 style='text-align:center;'>☀️ Solar AI</h2>
+<p style='text-align:center;color:#8b949e;'>Prediction Console</p>
+<hr>
+""", unsafe_allow_html=True)
+
 page = st.sidebar.radio(
     "Navigation",
     ["Upload Data", "Forecast Dashboard", "Model Insights"]
@@ -68,64 +122,44 @@ if page == "Upload Data":
     if uploaded_file is not None:
 
         try:
-            # ------------------------------
-            # LOAD RAW
-            # ------------------------------
             raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
 
-            # ------------------------------
-            # VALIDATE INPUT
-            # ------------------------------
             from src.data.validator import run_all_validations
-
             raw_df, missing_report = run_all_validations(raw_df)
 
             st.success("Data validation passed")
 
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             st.subheader("Missing Values Report")
             st.dataframe(missing_report)
+            st.markdown('</div>', unsafe_allow_html=True)
 
         except Exception as e:
             st.error("Invalid input data")
             st.exception(e)
             st.stop()
 
-        # ------------------------------
-        # SHOW RAW
-        # ------------------------------
+        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Raw Data Preview")
         st.dataframe(raw_df.head())
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        # ------------------------------
-        # CLEAN
-        # ------------------------------
         cleaned_df, report = clean_solar_data(raw_df)
 
+        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.subheader("Cleaned Data Preview")
         st.dataframe(cleaned_df.head())
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        # ------------------------------
-        # FEATURES
-        # ------------------------------
         feature_df = create_features(cleaned_df)
-
-        # ------------------------------
-        # FORECAST
-        # ------------------------------
         forecast_df = run_forecast_pipeline(feature_df, model)
 
-        # ------------------------------
-        # SAVE SESSION STATE
-        # ------------------------------
         st.session_state["raw_df"] = raw_df
         st.session_state["cleaned_df"] = cleaned_df
         st.session_state["X"] = feature_df
         st.session_state["forecast_df"] = forecast_df
 
         st.success("Forecast generated successfully. Go to Dashboard.")
-
-
-
 
 
 # ============================================================
@@ -145,85 +179,96 @@ elif page == "Forecast Dashboard":
         st.stop()
 
     cleaned_df = st.session_state["cleaned_df"]
-
-    # ---------------- FEATURE ENGINEERING ----------------
     feature_df = create_features(cleaned_df.copy())
 
-    # TARGET
     y_true = feature_df["power"]
-
-    # FEATURES FOR MODEL
     X = feature_df.drop(columns=["power", "timestamp"], errors="ignore")
-
-    # STORE FOR SHAP
     st.session_state["X"] = X
 
-    # ---------------- PREDICT ----------------
     y_pred = model.predict(X)
 
     forecast_df = feature_df.copy()
     forecast_df["actual_power"] = y_true
     forecast_df["predicted_power"] = y_pred
     forecast_df["error"] = y_true - y_pred
-
     st.session_state["forecast_df"] = forecast_df
 
-    # =====================================================
-    # METRICS
-    # =====================================================
-    col1, col2, col3, col4 = st.columns(4)
+    mae_value = mean_absolute_error(y_true, y_pred)
+    rmse_value = np.sqrt(mean_squared_error(y_true, y_pred))
+    mape_value = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-6))) * 100
+    r2_value = r2_score(y_true, y_pred)
 
-    col1.metric("MAE", f"{mean_absolute_error(y_true, y_pred):.3f}")
-    col2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_true, y_pred)):.3f}")
-    col3.metric("MAPE", f"{np.mean(np.abs((y_true-y_pred)/(y_true+1e-6)))*100:.2f}%")
-    col4.metric("R²", f"{r2_score(y_true, y_pred):.3f}")
+    # ===== METRICS =====
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Model Performance")
 
-    st.divider()
+    c1,c2,c3,c4 = st.columns(4)
+    with c1:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("MAE", f"{mae_value:.3f}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("RMSE", f"{rmse_value:.3f}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with c3:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("MAPE", f"{mape_value:.2f}%")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with c4:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric("R²", f"{r2_value:.3f}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # =====================================================
-    # ACTUAL VS PREDICTED
-    # =====================================================
-    st.subheader("Actual vs Predicted")
+    from src.utils.logger import log_forecast_run
+    log_forecast_run(
+        forecast_df=forecast_df,
+        model_version="random_forest_v1",
+        mae=mae_value,
+        rmse=rmse_value
+    )
 
+    # ===== ACTUAL VS PREDICTED =====
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Actual vs Predicted Power")
     fig, ax = plt.subplots(figsize=(12,4))
-    ax.plot(forecast_df["timestamp"], y_true, label="Actual")
-    ax.plot(forecast_df["timestamp"], y_pred, label="Predicted")
+    ax.plot(forecast_df["timestamp"], forecast_df["actual_power"], label="Actual")
+    ax.plot(forecast_df["timestamp"], forecast_df["predicted_power"], label="Predicted")
     ax.legend()
     st.pyplot(fig)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # =====================================================
-    # ERROR OVER TIME
-    # =====================================================
+    # ===== ERROR OVER TIME =====
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Prediction Error Over Time")
-
     fig, ax = plt.subplots(figsize=(12,3))
     ax.plot(forecast_df["timestamp"], forecast_df["error"])
     ax.axhline(0, linestyle="--")
     st.pyplot(fig)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # =====================================================
-    # ERROR DISTRIBUTION
-    # =====================================================
+    # ===== ERROR DISTRIBUTION =====
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Error Distribution")
-
     fig, ax = plt.subplots()
     ax.hist(forecast_df["error"], bins=40)
     st.pyplot(fig)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # =====================================================
-    # TABLE
-    # =====================================================
-    st.subheader("Forecast Table")
+    # ===== TABLE =====
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("Forecast Results")
     st.dataframe(
-        forecast_df[["timestamp","actual_power","predicted_power","error"]]
+        forecast_df[["timestamp","actual_power","predicted_power","error"]],
+        use_container_width=True
     )
-
     st.download_button(
         "Download Forecast CSV",
         forecast_df.to_csv(index=False),
         "forecast.csv"
     )
-
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ============================================================
@@ -244,19 +289,19 @@ elif page == "Model Insights":
 
     X = st.session_state["X"]
 
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Feature Importance (SHAP)")
-
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X)
-
     fig = plt.figure()
     shap.summary_plot(shap_values, X, show=False)
     st.pyplot(fig)
+    st.markdown('</div>', unsafe_allow_html=True)
 
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Feature Correlation")
-
     fig, ax = plt.subplots(figsize=(8,6))
-    corr = X.corr()
-    im = ax.imshow(corr)
+    im = ax.imshow(X.corr())
     plt.colorbar(im)
     st.pyplot(fig)
+    st.markdown('</div>', unsafe_allow_html=True)
