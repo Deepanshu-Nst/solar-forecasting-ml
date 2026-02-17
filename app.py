@@ -2,6 +2,9 @@
 # ☀️ SOLAR POWER FORECASTING SYSTEM — STABLE VERSION
 # ============================================================
 
+import plotly.graph_objects as go
+import plotly.express as px
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -163,7 +166,7 @@ if page == "Upload Data":
 
 
 # ============================================================
-# PAGE 2 — FORECAST DASHBOARD
+# PAGE 2 — FORECAST DASHBOARD (INTERACTIVE)
 # ============================================================
 
 elif page == "Forecast Dashboard":
@@ -203,57 +206,46 @@ elif page == "Forecast Dashboard":
     st.subheader("Model Performance")
 
     c1,c2,c3,c4 = st.columns(4)
-    with c1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("MAE", f"{mae_value:.3f}")
-        st.markdown('</div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("RMSE", f"{rmse_value:.3f}")
-        st.markdown('</div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("MAPE", f"{mape_value:.2f}%")
-        st.markdown('</div>', unsafe_allow_html=True)
-    with c4:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("R²", f"{r2_value:.3f}")
-        st.markdown('</div>', unsafe_allow_html=True)
+    c1.metric("MAE", f"{mae_value:.3f}")
+    c2.metric("RMSE", f"{rmse_value:.3f}")
+    c3.metric("MAPE", f"{mape_value:.2f}%")
+    c4.metric("R²", f"{r2_value:.3f}")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
-    from src.utils.logger import log_forecast_run
-    log_forecast_run(
-        forecast_df=forecast_df,
-        model_version="random_forest_v1",
-        mae=mae_value,
-        rmse=rmse_value
-    )
-
-    # ===== ACTUAL VS PREDICTED =====
+    # ===== ACTUAL VS PREDICTED (INTERACTIVE) =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Actual vs Predicted Power")
-    fig, ax = plt.subplots(figsize=(12,4))
-    ax.plot(forecast_df["timestamp"], forecast_df["actual_power"], label="Actual")
-    ax.plot(forecast_df["timestamp"], forecast_df["predicted_power"], label="Predicted")
-    ax.legend()
-    st.pyplot(fig)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=forecast_df["timestamp"], y=forecast_df["actual_power"], mode="lines", name="Actual"))
+    fig.add_trace(go.Scatter(x=forecast_df["timestamp"], y=forecast_df["predicted_power"], mode="lines", name="Predicted"))
+
+    fig.update_layout(
+        template="plotly_dark",
+        height=420,
+        hovermode="x unified"
+    )
+    fig.update_xaxes(rangeslider_visible=True)
+
+    st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ===== ERROR OVER TIME =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Prediction Error Over Time")
-    fig, ax = plt.subplots(figsize=(12,3))
-    ax.plot(forecast_df["timestamp"], forecast_df["error"])
-    ax.axhline(0, linestyle="--")
-    st.pyplot(fig)
+
+    fig = px.line(forecast_df, x="timestamp", y="error", template="plotly_dark")
+    fig.add_hline(y=0)
+    st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ===== ERROR DISTRIBUTION =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Error Distribution")
-    fig, ax = plt.subplots()
-    ax.hist(forecast_df["error"], bins=40)
-    st.pyplot(fig)
+
+    fig = px.histogram(forecast_df, x="error", nbins=40, template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ===== TABLE =====
