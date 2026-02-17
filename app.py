@@ -1,242 +1,220 @@
-import os
-import joblib
-import numpy as np
-import pandas as pd
+# ============================================================
+# ☀️ SOLAR POWER FORECASTING SYSTEM — STABLE VERSION
+# ============================================================
+
 import streamlit as st
+import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+import shap
+import joblib
+from pathlib import Path
 
-# =====================================================
-# IMPORT YOUR PROJECT MODULES
-# =====================================================
-from src.data.cleaner import clean_solar_data
-
-
-# =====================================================
-# PAGE CONFIG
-# =====================================================
-st.set_page_config(
-    page_title="Solar Power Forecasting System",
-    layout="wide"
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
 )
 
-
-# =====================================================
-# LOAD TRAINED MODEL (ROBUST PATH)
-# =====================================================
-def load_trained_model():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(base_dir, "models", "random_forest.pkl")
-
-    if os.path.exists(model_path):
-        return joblib.load(model_path)
-    return None
+from src.data.cleaner import clean_solar_data
+from src.features.engineer import create_features
 
 
-model = load_trained_model()
+# ============================================================
+# CONFIG
+# ============================================================
+
+st.set_page_config(page_title="Solar Power Forecasting", layout="wide")
+st.title("☀️ Solar Power Forecasting System")
+
+MODEL_PATH = Path("models/random_forest.pkl")
 
 
-# =====================================================
-# FEATURE ENGINEERING (SAFE MINIMAL)
-# =====================================================
-def create_time_features(df):
-    df = df.copy()
+# ============================================================
+# LOAD MODEL
+# ============================================================
 
-    df["hour"] = df["timestamp"].dt.hour
-    df["day_of_year"] = df["timestamp"].dt.dayofyear
+@st.cache_resource
+def load_model():
+    if not MODEL_PATH.exists():
+        return None
+    return joblib.load(MODEL_PATH)
 
-    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-
-    df["doy_sin"] = np.sin(2 * np.pi * df["day_of_year"] / 365)
-    df["doy_cos"] = np.cos(2 * np.pi * df["day_of_year"] / 365)
-
-    return df
+model = load_model()
 
 
-# =====================================================
-# FORECAST FUNCTION
-# =====================================================
-def generate_forecast(df, model):
-    df = df.copy()
+# ============================================================
+# SIDEBAR
+# ============================================================
 
-    df = create_time_features(df)
-
-    feature_cols = [c for c in df.columns if c not in ["timestamp", "power"]]
-    X = df[feature_cols]
-
-    # Align with trained model features
-    if model is not None and hasattr(model, "feature_names_in_"):
-        X = X.reindex(columns=model.feature_names_in_, fill_value=0)
-
-    if model is None:
-        # naive forecast
-        preds = df["power"].shift(1).fillna(method="bfill")
-    else:
-        preds = model.predict(X)
-
-    df["predicted_power"] = preds
-    df["actual_power"] = df["power"]
-
-    residuals = df["actual_power"] - df["predicted_power"]
-
-    df["lower_bound"] = df["predicted_power"] - residuals.std()
-    df["upper_bound"] = df["predicted_power"] + residuals.std()
-
-    return df
-
-
-# =====================================================
-# SESSION STATE
-# =====================================================
-if "forecast_df" not in st.session_state:
-    st.session_state.forecast_df = None
-
-
-# =====================================================
-# SIDEBAR NAVIGATION
-# =====================================================
-st.sidebar.title("Navigation")
 page = st.sidebar.radio(
-    "Go to",
+    "Navigation",
     ["Upload Data", "Forecast Dashboard", "Model Insights"]
 )
 
 
-# =====================================================
-# TITLE
-# =====================================================
-st.title("☀ Solar Power Forecasting System")
-
-
-# =====================================================
+# ============================================================
 # PAGE 1 — UPLOAD DATA
-# =====================================================
+# ============================================================
+
 if page == "Upload Data":
+
     st.header("Upload Solar Data")
 
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    uploaded_file = st.file_uploader("Upload CSV", type="csv")
 
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+    if uploaded_file:
 
-        cleaned_df, report = clean_solar_data(df)
+        raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
 
-        st.success("Data cleaned successfully")
+        st.subheader("Raw Data")
+        st.dataframe(raw_df.head())
+
+        # ---- SAFE CLEAN ----
+        cleaned = clean_solar_data(raw_df)
+
+        if isinstance(cleaned, tuple):
+            cleaned_df = cleaned[0]
+        else:
+            cleaned_df = cleaned
+
+        st.subheader("Cleaned Data")
         st.dataframe(cleaned_df.head())
 
-        # Generate forecast and store
-        forecast_df = generate_forecast(cleaned_df, model)
-        st.session_state.forecast_df = forecast_df
-
-        st.success("Forecast generated. Go to dashboard.")
+        st.session_state["cleaned_df"] = cleaned_df
+        st.success("Data uploaded successfully. Go to Forecast Dashboard.")
 
 
-# =====================================================
+
+# ============================================================
 # PAGE 2 — FORECAST DASHBOARD
-# =====================================================
-if page == "Forecast Dashboard":
+# ============================================================
+
+elif page == "Forecast Dashboard":
+
     st.header("Forecast Dashboard")
 
     if model is None:
-        st.warning("No trained model found. Using naive forecast.")
-    else:
-        st.success("Trained model loaded successfully.")
+        st.error("Model file not found: models/random_forest.pkl")
+        st.stop()
 
-    forecast_df = st.session_state.forecast_df
+    if "cleaned_df" not in st.session_state:
+        st.warning("Upload data first")
+        st.stop()
 
-    if forecast_df is None:
-        st.info("Upload data first.")
-    else:
-        mae = np.mean(np.abs(forecast_df["actual_power"] - forecast_df["predicted_power"]))
-        rmse = np.sqrt(np.mean((forecast_df["actual_power"] - forecast_df["predicted_power"])**2))
+    cleaned_df = st.session_state["cleaned_df"]
 
-        col1, col2 = st.columns(2)
-        col1.metric("MAE", round(mae, 3))
-        col2.metric("RMSE", round(rmse, 3))
+    # ---------------- FEATURE ENGINEERING ----------------
+    feature_df = create_features(cleaned_df.copy())
 
-        st.subheader("Actual vs Predicted")
+    # TARGET
+    y_true = feature_df["power"]
 
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(forecast_df["timestamp"], forecast_df["actual_power"], label="Actual")
-        ax.plot(forecast_df["timestamp"], forecast_df["predicted_power"], label="Predicted")
-        ax.legend()
-        ax.set_ylabel("Power")
-        st.pyplot(fig)
+    # FEATURES FOR MODEL
+    X = feature_df.drop(columns=["power", "timestamp"], errors="ignore")
 
-        st.download_button(
-            "Download Forecast CSV",
-            forecast_df.to_csv(index=False),
-            file_name="forecast.csv"
-        )
+    # STORE FOR SHAP
+    st.session_state["X"] = X
+
+    # ---------------- PREDICT ----------------
+    y_pred = model.predict(X)
+
+    forecast_df = feature_df.copy()
+    forecast_df["actual_power"] = y_true
+    forecast_df["predicted_power"] = y_pred
+    forecast_df["error"] = y_true - y_pred
+
+    st.session_state["forecast_df"] = forecast_df
+
+    # =====================================================
+    # METRICS
+    # =====================================================
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("MAE", f"{mean_absolute_error(y_true, y_pred):.3f}")
+    col2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_true, y_pred)):.3f}")
+    col3.metric("MAPE", f"{np.mean(np.abs((y_true-y_pred)/(y_true+1e-6)))*100:.2f}%")
+    col4.metric("R²", f"{r2_score(y_true, y_pred):.3f}")
+
+    st.divider()
+
+    # =====================================================
+    # ACTUAL VS PREDICTED
+    # =====================================================
+    st.subheader("Actual vs Predicted")
+
+    fig, ax = plt.subplots(figsize=(12,4))
+    ax.plot(forecast_df["timestamp"], y_true, label="Actual")
+    ax.plot(forecast_df["timestamp"], y_pred, label="Predicted")
+    ax.legend()
+    st.pyplot(fig)
+
+    # =====================================================
+    # ERROR OVER TIME
+    # =====================================================
+    st.subheader("Prediction Error Over Time")
+
+    fig, ax = plt.subplots(figsize=(12,3))
+    ax.plot(forecast_df["timestamp"], forecast_df["error"])
+    ax.axhline(0, linestyle="--")
+    st.pyplot(fig)
+
+    # =====================================================
+    # ERROR DISTRIBUTION
+    # =====================================================
+    st.subheader("Error Distribution")
+
+    fig, ax = plt.subplots()
+    ax.hist(forecast_df["error"], bins=40)
+    st.pyplot(fig)
+
+    # =====================================================
+    # TABLE
+    # =====================================================
+    st.subheader("Forecast Table")
+    st.dataframe(
+        forecast_df[["timestamp","actual_power","predicted_power","error"]]
+    )
+
+    st.download_button(
+        "Download Forecast CSV",
+        forecast_df.to_csv(index=False),
+        "forecast.csv"
+    )
 
 
-# =====================================================
+
+# ============================================================
 # PAGE 3 — MODEL INSIGHTS
-# =====================================================
-if page == "Model Insights":
+# ============================================================
+
+elif page == "Model Insights":
+
     st.header("Model Insights")
 
-    forecast_df = st.session_state.forecast_df
+    if model is None:
+        st.warning("Model not loaded")
+        st.stop()
 
-    if forecast_df is None:
-        st.warning("Run forecast first.")
-    else:
-        residuals = forecast_df["actual_power"] - forecast_df["predicted_power"]
+    if "X" not in st.session_state:
+        st.warning("Run forecast first")
+        st.stop()
 
-        st.subheader("Prediction Error Distribution")
-        fig, ax = plt.subplots()
-        ax.hist(residuals, bins=30)
-        st.pyplot(fig)
+    X = st.session_state["X"]
 
-        st.subheader("Residuals Over Time")
-        fig, ax = plt.subplots()
-        ax.plot(forecast_df["timestamp"], residuals)
-        ax.axhline(0, linestyle="--")
-        st.pyplot(fig)
+    st.subheader("Feature Importance (SHAP)")
 
-        st.subheader("Explain Individual Prediction")
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
 
-        idx = st.slider(
-            "Select row",
-            0,
-            len(forecast_df) - 1,
-            0
-        )
+    fig = plt.figure()
+    shap.summary_plot(shap_values, X, show=False)
+    st.pyplot(fig)
 
-        row = forecast_df.iloc[idx]
-        st.write("Prediction:", row["predicted_power"])
+    st.subheader("Feature Correlation")
 
-        # SHAP (optional)
-        try:
-            import shap
-
-            if model is not None:
-                feature_cols = [c for c in forecast_df.columns if c not in [
-                    "timestamp",
-                    "actual_power",
-                    "predicted_power",
-                    "lower_bound",
-                    "upper_bound"
-                ]]
-
-                X = forecast_df[feature_cols]
-
-                if hasattr(model, "feature_names_in_"):
-                    X = X.reindex(columns=model.feature_names_in_, fill_value=0)
-
-                explainer = shap.TreeExplainer(model)
-                shap_values = explainer.shap_values(X.iloc[[idx]])
-
-                st.subheader("SHAP Explanation")
-                shap.initjs()
-                shap.force_plot(
-                    explainer.expected_value,
-                    shap_values[0],
-                    X.iloc[idx],
-                    matplotlib=True
-                )
-                st.pyplot(plt.gcf())
-
-        except Exception:
-            st.info("SHAP not available. Install with: pip install shap ipython")
+    fig, ax = plt.subplots(figsize=(8,6))
+    corr = X.corr()
+    im = ax.imshow(corr)
+    plt.colorbar(im)
+    st.pyplot(fig)
