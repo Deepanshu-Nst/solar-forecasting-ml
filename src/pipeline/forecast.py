@@ -5,7 +5,7 @@ from src.models.uncertainty import predict_with_uncertainty
 def run_forecast_pipeline(feature_df, trained_model):
     """
     Forecast pipeline using preprocessed feature dataframe.
-    Assumes cleaning + feature engineering already done.
+    Enforces model feature schema.
     """
 
     df = feature_df.copy()
@@ -14,6 +14,23 @@ def run_forecast_pipeline(feature_df, trained_model):
     # Prepare prediction data
     # ------------------------
     X = df.drop(columns=["timestamp", "power"], errors="ignore")
+
+    # ==============================
+    # FEATURE SCHEMA ENFORCEMENT ⭐
+    # ==============================
+    if hasattr(trained_model, "feature_names_in_"):
+
+        expected = list(trained_model.feature_names_in_)
+
+        missing = [c for c in expected if c not in X.columns]
+        extra = [c for c in X.columns if c not in expected]
+
+        if missing:
+            raise ValueError(f"Missing required model features: {missing}")
+
+        # reorder and drop extras
+        X = X[expected]
+
     timestamps = df["timestamp"]
     actual = df["power"]
 
