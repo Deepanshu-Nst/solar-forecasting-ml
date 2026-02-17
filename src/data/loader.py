@@ -1,26 +1,23 @@
 import pandas as pd
-from pathlib import Path
-from .validator import run_all_validations
 
 
-def load_csv(filepath: str, verbose=True):
-    filepath = Path(filepath)
+def load_csv(uploaded_file):
+    """
+    Loads CSV from Streamlit UploadedFile or file path.
+    """
 
-    if not filepath.exists():
-        raise FileNotFoundError(f"File not found: {filepath}")
+    # Streamlit UploadedFile
+    if hasattr(uploaded_file, "read"):
+        df = pd.read_csv(uploaded_file)
 
-    if filepath.suffix != ".csv":
-        raise ValueError("Only CSV files are supported")
+    # Normal path
+    else:
+        df = pd.read_csv(uploaded_file)
 
-    df = pd.read_csv(filepath)
+    # Ensure timestamp exists
+    if "timestamp" not in df.columns:
+        raise ValueError("CSV must contain 'timestamp' column")
 
-    if verbose:
-        print(f"Loaded data shape: {df.shape}")
-
-    df, missing = run_all_validations(df)
-
-    if verbose:
-        print("Missing values:")
-        print(missing)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
 
     return df

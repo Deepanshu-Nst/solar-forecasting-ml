@@ -103,3 +103,6 @@ def clean_solar_data(df):
     report["rows_final"] = len(df)
 
     return df, report
+
+# Alias for compatibility
+clean_data = clean_solar_data
