@@ -32,8 +32,9 @@ def add_lag_features(df, lags):
 # ------------------------------------------------
 def add_rolling_features(df, rolling_windows):
     for w in rolling_windows:
-        df[f"power_roll_mean_{w}"] = df["power"].rolling(w).mean()
-        df[f"power_roll_std_{w}"] = df["power"].rolling(w).std()
+        df[f"power_roll_mean_{w}"] = df["power"].shift(1).rolling(w).mean()
+        df[f"power_roll_std_{w}"] = df["power"].shift(1).rolling(w).std()
+
     return df
 
 
