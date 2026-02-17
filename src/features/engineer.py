@@ -21,7 +21,7 @@ def add_time_features(df):
 # ------------------------------------------------
 # 2. LAG FEATURES
 # ------------------------------------------------
-def add_lag_features(df, lags=[1, 2, 3, 24]):
+def add_lag_features(df, lags):
     for lag in lags:
         df[f"power_lag_{lag}"] = df["power"].shift(lag)
     return df
@@ -30,8 +30,8 @@ def add_lag_features(df, lags=[1, 2, 3, 24]):
 # ------------------------------------------------
 # 3. ROLLING STATISTICS
 # ------------------------------------------------
-def add_rolling_features(df, windows=[3, 6, 24]):
-    for w in windows:
+def add_rolling_features(df, rolling_windows):
+    for w in rolling_windows:
         df[f"power_roll_mean_{w}"] = df["power"].rolling(w).mean()
         df[f"power_roll_std_{w}"] = df["power"].rolling(w).std()
     return df
@@ -58,14 +58,17 @@ def add_clear_sky_proxy(df):
 # ------------------------------------------------
 # MAIN FEATURE PIPELINE
 # ------------------------------------------------
-def create_features(df):
+def create_features(
+    df,
+    lags=[1, 2, 3],
+    rolling_windows=[3, 6]
+):
 
     df = add_time_features(df)
-    df = add_lag_features(df)
-    df = add_rolling_features(df)
+    df = add_lag_features(df, lags)
+    df = add_rolling_features(df, rolling_windows)
     df = add_weather_interactions(df)
     df = add_clear_sky_proxy(df)
 
     df = df.dropna().reset_index(drop=True)
-
     return df
