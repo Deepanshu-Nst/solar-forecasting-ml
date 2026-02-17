@@ -1,5 +1,5 @@
 # ============================================================
-# ☀️ SOLAR POWER FORECASTING SYSTEM — STABLE VERSION
+#  SOLAR POWER FORECASTING SYSTEM — STABLE VERSION (UNCERTAINTY ENABLED)
 # ============================================================
 
 import plotly.graph_objects as go
@@ -22,6 +22,7 @@ from sklearn.metrics import (
 from src.data.cleaner import clean_solar_data
 from src.features.engineer import create_features
 from src.pipeline.forecast import run_forecast_pipeline
+from src.models.uncertainty import predict_with_uncertainty   # ⭐ NEW
 
 
 # ============================================================
@@ -74,7 +75,7 @@ section[data-testid="stSidebar"] {
 st.set_page_config(page_title="Solar Power Forecasting", layout="wide")
 
 st.markdown("""
-<h1 style='text-align:center;margin-bottom:0;'>☀️ Solar Power Forecasting System</h1>
+<h1 style='text-align:center;margin-bottom:0;'> Solar Power Forecasting System</h1>
 <p style='text-align:center;color:#8b949e;margin-top:4px;'>
 AI-powered solar generation prediction & monitoring dashboard
 </p>
@@ -101,7 +102,7 @@ model = load_model()
 # ============================================================
 
 st.sidebar.markdown("""
-<h2 style='text-align:center;'>☀️ Solar AI</h2>
+<h2 style='text-align:center;'> Solar AI</h2>
 <p style='text-align:center;color:#8b949e;'>Prediction Console</p>
 <hr>
 """, unsafe_allow_html=True)
@@ -166,7 +167,7 @@ if page == "Upload Data":
 
 
 # ============================================================
-# PAGE 2 — FORECAST DASHBOARD (INTERACTIVE)
+# PAGE 2 — FORECAST DASHBOARD
 # ============================================================
 
 elif page == "Forecast Dashboard":
@@ -188,18 +189,21 @@ elif page == "Forecast Dashboard":
     X = feature_df.drop(columns=["power", "timestamp"], errors="ignore")
     st.session_state["X"] = X
 
-    y_pred = model.predict(X)
+    # ⭐ UNCERTAINTY PREDICTION
+    mean_pred, lower_bound, upper_bound = predict_with_uncertainty(model, X)
 
     forecast_df = feature_df.copy()
     forecast_df["actual_power"] = y_true
-    forecast_df["predicted_power"] = y_pred
-    forecast_df["error"] = y_true - y_pred
+    forecast_df["predicted_power"] = mean_pred
+    forecast_df["lower_bound"] = lower_bound
+    forecast_df["upper_bound"] = upper_bound
+    forecast_df["error"] = y_true - mean_pred
     st.session_state["forecast_df"] = forecast_df
 
-    mae_value = mean_absolute_error(y_true, y_pred)
-    rmse_value = np.sqrt(mean_squared_error(y_true, y_pred))
-    mape_value = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-6))) * 100
-    r2_value = r2_score(y_true, y_pred)
+    mae_value = mean_absolute_error(y_true, mean_pred)
+    rmse_value = np.sqrt(mean_squared_error(y_true, mean_pred))
+    mape_value = np.mean(np.abs((y_true - mean_pred) / (y_true + 1e-6))) * 100
+    r2_value = r2_score(y_true, mean_pred)
 
     # ===== METRICS =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -210,22 +214,46 @@ elif page == "Forecast Dashboard":
     c2.metric("RMSE", f"{rmse_value:.3f}")
     c3.metric("MAPE", f"{mape_value:.2f}%")
     c4.metric("R²", f"{r2_value:.3f}")
-
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ===== ACTUAL VS PREDICTED (INTERACTIVE) =====
+    # ===== ACTUAL VS PREDICTED WITH CONFIDENCE BAND =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("Actual vs Predicted Power")
+    st.subheader("Actual vs Predicted Power (Confidence Interval)")
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=forecast_df["timestamp"], y=forecast_df["actual_power"], mode="lines", name="Actual"))
-    fig.add_trace(go.Scatter(x=forecast_df["timestamp"], y=forecast_df["predicted_power"], mode="lines", name="Predicted"))
 
-    fig.update_layout(
-        template="plotly_dark",
-        height=420,
-        hovermode="x unified"
-    )
+    fig.add_trace(go.Scatter(
+        x=forecast_df["timestamp"],
+        y=forecast_df["upper_bound"],
+        line=dict(width=0),
+        showlegend=False,
+        hoverinfo="skip"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=forecast_df["timestamp"],
+        y=forecast_df["lower_bound"],
+        fill="tonexty",
+        fillcolor="rgba(0,176,246,0.2)",
+        line=dict(width=0),
+        name="Prediction Range"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=forecast_df["timestamp"],
+        y=forecast_df["predicted_power"],
+        mode="lines",
+        name="Predicted"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=forecast_df["timestamp"],
+        y=forecast_df["actual_power"],
+        mode="lines",
+        name="Actual"
+    ))
+
+    fig.update_layout(template="plotly_dark", height=420, hovermode="x unified")
     fig.update_xaxes(rangeslider_visible=True)
 
     st.plotly_chart(fig, use_container_width=True)
@@ -234,7 +262,6 @@ elif page == "Forecast Dashboard":
     # ===== ERROR OVER TIME =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Prediction Error Over Time")
-
     fig = px.line(forecast_df, x="timestamp", y="error", template="plotly_dark")
     fig.add_hline(y=0)
     st.plotly_chart(fig, use_container_width=True)
@@ -243,7 +270,6 @@ elif page == "Forecast Dashboard":
     # ===== ERROR DISTRIBUTION =====
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Error Distribution")
-
     fig = px.histogram(forecast_df, x="error", nbins=40, template="plotly_dark")
     st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -252,7 +278,7 @@ elif page == "Forecast Dashboard":
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("Forecast Results")
     st.dataframe(
-        forecast_df[["timestamp","actual_power","predicted_power","error"]],
+        forecast_df[["timestamp","actual_power","predicted_power","lower_bound","upper_bound","error"]],
         use_container_width=True
     )
     st.download_button(
