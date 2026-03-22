@@ -123,10 +123,23 @@ if page == "Upload Data":
 
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
-    if uploaded_file is not None:
+    st.markdown("---")
+    st.markdown("**No data?** Try the system using our pre-configured sample dataset:")
+    col1, col2 = st.columns(2)
+    with col1:
+        use_sample = st.button("🚀 Use Sample Data", use_container_width=True)
+    with col2:
+        with open("data/sample.csv", "rb") as f:
+            st.download_button("📥 Download sample.csv", f, file_name="sample.csv", use_container_width=True)
+    st.markdown("---")
+
+    if uploaded_file is not None or use_sample:
 
         try:
-            raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
+            if use_sample:
+                raw_df = pd.read_csv("data/sample.csv", parse_dates=["timestamp"])
+            else:
+                raw_df = pd.read_csv(uploaded_file, parse_dates=["timestamp"])
 
             from src.data.validator import run_all_validations
             raw_df, missing_report = run_all_validations(raw_df)
